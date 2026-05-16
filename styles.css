@@ -289,11 +289,31 @@ h1 {
 }
 
 #world-map[hidden],
+#terrain-layer[hidden],
 .map-toolbar[hidden],
 .outline-stage[hidden],
 .answer-form[hidden],
 .question-clue[hidden] {
   display: none;
+}
+
+.terrain-layer,
+.terrain-image {
+  pointer-events: none;
+}
+
+.terrain-image {
+  opacity: 0.9;
+  filter: saturate(1.04) contrast(1.04);
+}
+
+#world-map.has-terrain-hint .land-fill {
+  fill-opacity: 0.24;
+}
+
+#world-map.has-terrain-hint .land-outline {
+  stroke: rgba(255, 253, 250, 0.88);
+  stroke-width: 1.35;
 }
 
 .question-panel {
@@ -666,6 +686,12 @@ h1 {
 .map-toolbar button:hover {
   background: #fff;
   transform: translateY(-1px);
+}
+
+.map-toolbar button[aria-pressed="true"] {
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(22, 32, 29, 0.22);
 }
 
 .map-toolbar svg {

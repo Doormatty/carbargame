@@ -18,6 +18,7 @@
   const OUTLINE_PADDING = 34;
   const OUTLINE_MIN_PROJECTED_AREA = 14;
   const STREAK_BONUS_POINTS = 10;
+  const TERRAIN_HINT_SCORE_MULTIPLIER = 0.5;
   const PROGRESS_STORAGE_KEY = "geopin-progress-v1";
   const RECENT_ATTEMPT_LIMIT = 100;
   const RECENT_FORM_LIMIT = 20;
@@ -57,6 +58,7 @@
     landLayer: document.querySelector("#land-layer"),
     answerLayer: document.querySelector("#answer-layer"),
     pinLayer: document.querySelector("#pin-layer"),
+    terrainLayer: document.querySelector("#terrain-layer"),
     score: document.querySelector("#score"),
     streak: document.querySelector("#streak"),
     round: document.querySelector("#round"),
@@ -80,6 +82,7 @@
     zoomIn: document.querySelector("#zoom-in"),
     zoomOut: document.querySelector("#zoom-out"),
     zoomReset: document.querySelector("#zoom-reset"),
+    terrainHint: document.querySelector("#terrain-hint"),
     clearProgress: document.querySelector("#clear-progress"),
     lifetimeAccuracy: document.querySelector("#lifetime-accuracy"),
     lifetimeAnswered: document.querySelector("#lifetime-answered"),
@@ -105,6 +108,8 @@
     answered: false,
     foundAnswerIds: [],
     remainingAnswerIds: [],
+    terrainHintVisible: false,
+    terrainHintUsed: false,
     progress: loadProgress(),
     view: { x: 0, y: 0, width: MAP_WIDTH, height: MAP_HEIGHT },
     pointer: null,
@@ -215,6 +220,7 @@
     elements.zoomIn.addEventListener("click", () => zoomAtCenter(0.58));
     elements.zoomOut.addEventListener("click", () => zoomAtCenter(1.72));
     elements.zoomReset.addEventListener("click", resetView);
+    elements.terrainHint.addEventListener("click", toggleTerrainHint);
     elements.clearProgress.addEventListener("click", clearProgressHistory);
 
     elements.svg.addEventListener("pointerdown", handlePointerDown);
@@ -245,6 +251,36 @@
     );
   }
 
+  function toggleTerrainHint() {
+    if (state.mode !== GAME_MODES.MAP || state.answered) {
+      return;
+    }
+
+    state.terrainHintVisible = !state.terrainHintVisible;
+
+    if (state.terrainHintVisible) {
+      state.terrainHintUsed = true;
+    }
+
+    updateTerrainHintUI();
+    renderQuestionPoints(getCurrentQuestion(), isMultiAnswerQuestion(getCurrentQuestion()));
+  }
+
+  function resetTerrainHint() {
+    state.terrainHintVisible = false;
+    state.terrainHintUsed = false;
+    updateTerrainHintUI();
+  }
+
+  function updateTerrainHintUI() {
+    const isActive = state.mode === GAME_MODES.MAP && state.terrainHintVisible;
+
+    setHidden(elements.terrainLayer, !isActive);
+    elements.svg.classList.toggle("has-terrain-hint", isActive);
+    elements.terrainHint.setAttribute("aria-pressed", String(isActive));
+    elements.terrainHint.disabled = state.mode !== GAME_MODES.MAP || state.answered;
+  }
+
   function restartGame() {
     state.questions =
       state.mode === GAME_MODES.OUTLINE
@@ -266,6 +302,7 @@
     state.answered = false;
     state.foundAnswerIds = [];
     state.remainingAnswerIds = question.answers.slice();
+    resetTerrainHint();
     elements.answerLayer.replaceChildren();
     elements.pinLayer.replaceChildren();
     elements.outlineLayer.replaceChildren();
@@ -279,9 +316,7 @@
     elements.submitAnswer.disabled = !isOutlineMode;
 
     elements.questionType.textContent = question.type;
-    elements.questionPoints.textContent = isMultiAnswer
-      ? `${question.points} pts each`
-      : `${question.points} pts`;
+    renderQuestionPoints(question, isMultiAnswer);
     elements.questionText.textContent = question.prompt;
     elements.questionPanel.classList.toggle("is-outline", isOutlineMode);
     elements.mapStage.classList.toggle("is-outline", isOutlineMode);
@@ -408,8 +443,28 @@
     return state.mode === GAME_MODES.MAP && question.answers.length > 1;
   }
 
+  function renderQuestionPoints(question, isMultiAnswer) {
+    const hasHintPenalty = state.mode === GAME_MODES.MAP && state.terrainHintUsed;
+    const points = hasHintPenalty
+      ? applyTerrainHintPenalty(question.points)
+      : question.points;
+    const suffix = isMultiAnswer ? "pts each" : "pts";
+
+    elements.questionPoints.textContent = hasHintPenalty
+      ? `${points} ${suffix} with hint`
+      : `${points} ${suffix}`;
+  }
+
   function getAnswerPoints(question) {
-    return question.points + state.streak * STREAK_BONUS_POINTS;
+    const points = question.points + state.streak * STREAK_BONUS_POINTS;
+
+    return state.mode === GAME_MODES.MAP && state.terrainHintUsed
+      ? applyTerrainHintPenalty(points)
+      : points;
+  }
+
+  function applyTerrainHintPenalty(points) {
+    return Math.floor(points * TERRAIN_HINT_SCORE_MULTIPLIER);
   }
 
   function markAnswerFound(regionId) {
@@ -597,6 +652,7 @@
 
   function finishAnswer() {
     state.answered = true;
+    updateTerrainHintUI();
     elements.nextButton.disabled = false;
     elements.nextButton.textContent =
       state.currentIndex >= state.questions.length - 1 ? "Play again" : "Next";

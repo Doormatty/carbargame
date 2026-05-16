@@ -67,6 +67,65 @@ test("can answer a deterministic map question", async ({ page }) => {
   await expectNoRuntimeFailures(failures);
 });
 
+test("terrain hint overlays satellite terrain and halves current question points", async ({
+  page,
+}) => {
+  const failures = await openGame(page);
+
+  await page.evaluate(() => {
+    window.__GEOPIN_TEST__.setQuestions([
+      {
+        id: "test-terrain-united-states",
+        type: "Test",
+        points: 100,
+        clue: "Test clue",
+        prompt: "Click the United States.",
+        answers: ["united-states"],
+      },
+      {
+        id: "test-terrain-canada",
+        type: "Test",
+        points: 100,
+        clue: "Test clue",
+        prompt: "Click Canada.",
+        answers: ["canada"],
+      },
+    ]);
+  });
+
+  await expect(page.locator("#terrain-hint")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#terrain-layer")).toBeHidden();
+
+  const terrainImageHref = await page
+    .locator("#terrain-image")
+    .evaluate((image) => image.getAttribute("href"));
+  expect(terrainImageHref).toContain("3x21600x10800");
+
+  await page.locator("#terrain-hint").click();
+
+  await expect(page.locator("#terrain-hint")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#terrain-layer")).toBeVisible();
+  await expect(page.locator("#world-map")).toHaveClass(/has-terrain-hint/);
+  await expect(page.locator("#question-points")).toHaveText("50 pts with hint");
+
+  await page.evaluate(() => {
+    const testApi = window.__GEOPIN_TEST__;
+    testApi.answerAt(testApi.project([-98, 39]));
+  });
+
+  await expect(page.locator("#feedback")).toContainText("+50 points");
+  await expect(page.locator("#score")).toHaveText("50");
+
+  await page.locator("#next-button").click();
+
+  await expect(page.locator("#terrain-hint")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#terrain-layer")).toBeHidden();
+  await expect(page.locator("#world-map")).not.toHaveClass(/has-terrain-hint/);
+  await expect(page.locator("#question-points")).toHaveText("100 pts");
+
+  await expectNoRuntimeFailures(failures);
+});
+
 test("renders flag clues as image assets", async ({ page }) => {
   const failures = await openGame(page);
 

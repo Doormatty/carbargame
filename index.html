@@ -89,9 +89,36 @@
                 <path d="M4 3v6h6V7H7.41A6.96 6.96 0 0 1 12 5V3a8.95 8.95 0 0 0-6.36 2.64L3 3z"></path>
               </svg>
             </button>
+            <button
+              id="terrain-hint"
+              type="button"
+              aria-label="Terrain hint"
+              aria-pressed="false"
+              title="Terrain hint (50% score for this question)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 18.5 9.2 7.8l3.6 6.1 2-3.1 6.2 7.7H3zm4.3-2h9.6l-1.9-2.3-2.3 3.5-3.5-6-1.9 4.8z"></path>
+                <path d="M16.8 6.2a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"></path>
+              </svg>
+            </button>
           </div>
           <svg id="world-map" viewBox="0 0 1000 500" role="img" aria-label="Blank world map">
             <rect class="ocean" width="1000" height="500"></rect>
+            <g id="terrain-layer" class="terrain-layer" hidden>
+              <desc>
+                NASA Blue Marble Next Generation with topography, July, 21600 by 10800 pixels.
+              </desc>
+              <image
+                id="terrain-image"
+                class="terrain-image"
+                href="https://neo.gsfc.nasa.gov/archive/bluemarble/bmng/world_2km/world.topo.200407.3x21600x10800.jpg"
+                x="0"
+                y="0"
+                width="1000"
+                height="500"
+                preserveAspectRatio="none"
+              ></image>
+            </g>
             <g id="land-layer"></g>
             <g id="answer-layer"></g>
             <g id="pin-layer"></g>
