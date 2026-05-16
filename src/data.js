@@ -1918,6 +1918,14 @@
     ["landmark-ulaanbaatar-steppe", "Landmark", 120, "Gorkhi-Terelj", "Click the country containing Gorkhi-Terelj National Park.", "mongolia"],
     ["landmark-banaue", "Landmark", 120, "Banaue Rice Terraces", "Click the country containing the Banaue Rice Terraces.", "philippines"],
     ["landmark-great-wall", "Landmark", 90, "Great Wall", "Click the country containing the Great Wall.", "china"],
+    ["language-portuguese-official", "Language", 120, "Portuguese", "Click a country where Portuguese is an official language.", ["portugal", "brazil", "angola", "mozambique", "cabo-verde", "guinea-bissau", "s-o-tom-and-principe", "timor-leste", "equatorial-guinea"]],
+    ["language-north-africa-arabic", "Language", 120, "Arabic in North Africa", "Click an Arabic-speaking country in North Africa.", ["morocco", "algeria", "tunisia", "libya", "egypt", "sudan", "mauritania"]],
+    ["language-swahili", "Language", 130, "Swahili", "Click a country where Swahili is official or widely used.", ["tanzania", "kenya", "uganda", "rwanda", "democratic-republic-of-the-congo"]],
+    ["language-west-africa-french", "Language", 130, "French in West Africa", "Click a French-speaking country in West Africa.", ["senegal", "mali", "niger", "burkina-faso", "c-te-d-ivoire", "benin", "togo", "guinea"]],
+    ["currency-eurozone", "Currency", 120, "Eurozone", "Click an EU country that uses the euro.", ["austria", "belgium", "bulgaria", "croatia", "cyprus", "estonia", "finland", "france", "germany", "greece", "ireland", "italy", "latvia", "lithuania", "luxembourg", "malta", "netherlands", "portugal", "slovakia", "slovenia", "spain"]],
+    ["currency-west-african-cfa", "Currency", 130, "West African CFA franc", "Click a West African country that uses the CFA franc.", ["senegal", "mali", "niger", "burkina-faso", "c-te-d-ivoire", "benin", "togo", "guinea-bissau"]],
+    ["currency-dollarized-latin-america", "Currency", 130, "US dollar", "Click a Latin American country outside the United States that uses the US dollar.", ["ecuador", "el-salvador", "panama"]],
+    ["currency-pound-sterling", "Currency", 110, "Pound sterling", "Click the country whose national currency is pound sterling.", "united-kingdom"],
   ]),
   ];
 

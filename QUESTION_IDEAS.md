@@ -7,25 +7,27 @@ shape prompt. The categories below are intended to add new kinds of knowledge
 rather than more of those same buckets. For current-stat or membership-based
 ideas, verify the source data before converting them into playable questions.
 
-## Candidate Categories
+## Added To Game
 
 ### Language
 
-Ask for countries by official or widely used language.
+Added the initial language batch to `src/data.js`:
 
-- Portuguese-speaking countries: Portugal, Brazil, Angola, Mozambique, Cabo Verde, Guinea-Bissau, Sao Tome and Principe, Timor-Leste, Equatorial Guinea.
-- Arabic-speaking countries in North Africa: Morocco, Algeria, Tunisia, Libya, Egypt, Sudan, Mauritania.
-- Countries where Swahili is official or widely used: Tanzania, Kenya, Uganda, Rwanda, Democratic Republic of the Congo.
-- Countries where French is an official language in West Africa: Senegal, Mali, Niger, Burkina Faso, Cote d'Ivoire, Benin, Togo, Guinea.
+- `language-portuguese-official`
+- `language-north-africa-arabic`
+- `language-swahili`
+- `language-west-africa-french`
 
 ### Currency
 
-Ask for countries by currency union or distinctive national currency.
+Added the initial currency batch to `src/data.js`:
 
-- Eurozone countries: France, Germany, Italy, Spain, Portugal, Ireland, Netherlands, Belgium, Austria, Greece, Finland, Slovakia, Slovenia, Croatia, Estonia, Latvia, Lithuania, Luxembourg, Malta, Cyprus.
-- CFA franc users in West Africa: Senegal, Mali, Niger, Burkina Faso, Cote d'Ivoire, Benin, Togo, Guinea-Bissau.
-- Dollarized countries: Ecuador, El Salvador, Panama.
-- Countries using the pound sterling: United Kingdom.
+- `currency-eurozone`
+- `currency-west-african-cfa`
+- `currency-dollarized-latin-america`
+- `currency-pound-sterling`
+
+## Candidate Categories
 
 ### International Organizations
 
