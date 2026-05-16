@@ -383,6 +383,35 @@ h1 {
   stroke: var(--accent);
 }
 
+.answer-distance {
+  pointer-events: none;
+}
+
+.answer-distance-line {
+  stroke: var(--bad);
+  stroke-width: 2.4;
+  stroke-dasharray: 7 5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.answer-distance-target {
+  fill: var(--good);
+  stroke: #fff;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.answer-distance-label {
+  fill: var(--ink);
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(255, 253, 250, 0.95);
+  stroke-linejoin: round;
+  stroke-width: 5;
+  vector-effect: non-scaling-stroke;
+}
+
 .pin {
   pointer-events: none;
 }

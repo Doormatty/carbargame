@@ -6,6 +6,7 @@
   const MIN_VIEW_WIDTH = 90;
   const MAX_VIEW_WIDTH = MAP_WIDTH;
   const ANSWER_SLOP_PX = 18;
+  const EARTH_RADIUS_KM = 6371;
   const GAME_MODES = {
     MAP: "map",
     OUTLINE: "outline",
@@ -274,11 +275,13 @@
       elements.feedback.className = "feedback good";
       elements.feedback.textContent = `Correct: ${correctRegion.name}. +${earned} points.`;
     } else {
+      const missDistance = showMissDistance(point, question.answers);
       const clicked = describeClickedArea(lonLat, clickedRegion);
       const answers = formatRegionList(question.answers);
+      const distanceText = missDistance ? ` You were ${missDistance.distanceText} away.` : "";
       state.streak = 0;
       elements.feedback.className = "feedback bad";
-      elements.feedback.textContent = `No: that was ${clicked}. Answer: ${answers}.`;
+      elements.feedback.textContent = `No: that was ${clicked}. Answer: ${answers}.${distanceText}`;
     }
 
     finishAnswer();
@@ -516,6 +519,143 @@
     elements.pinLayer.replaceChildren(pin);
   }
 
+  function showMissDistance(clickPoint, answerIds) {
+    const target = findNearestAnswerTarget(clickPoint, answerIds);
+
+    if (!target) {
+      return null;
+    }
+
+    const distanceKm = haversineDistanceKm(unproject(clickPoint), target.lonLat);
+    const distanceText = formatDistanceKm(distanceKm);
+    const labelPoint = getDistanceLabelPoint(clickPoint, target.point);
+    const group = createSvgElement("g", { class: "answer-distance" });
+    const label = createSvgElement("text", {
+      class: "answer-distance-label",
+      x: round(labelPoint.x),
+      y: round(labelPoint.y),
+      "font-size": round(scaledLength(15)),
+      "text-anchor": "middle",
+      "dominant-baseline": "central",
+    });
+
+    label.textContent = distanceText;
+    group.append(
+      createSvgElement("line", {
+        class: "answer-distance-line",
+        x1: round(clickPoint.x),
+        y1: round(clickPoint.y),
+        x2: round(target.point.x),
+        y2: round(target.point.y),
+      }),
+      createSvgElement("circle", {
+        class: "answer-distance-target",
+        cx: round(target.point.x),
+        cy: round(target.point.y),
+        r: round(scaledLength(4.5)),
+      }),
+      label,
+    );
+    elements.answerLayer.append(group);
+
+    return { distanceKm, distanceText, region: target.region };
+  }
+
+  function findNearestAnswerTarget(clickPoint, answerIds) {
+    let bestTarget = null;
+
+    answerIds.forEach((regionId) => {
+      const region = regionById.get(regionId);
+
+      if (!region) {
+        return;
+      }
+
+      const target = getClosestPointOnRegion(clickPoint, region);
+      if (target && (!bestTarget || target.mapDistance < bestTarget.mapDistance)) {
+        bestTarget = { ...target, region };
+      }
+    });
+
+    return bestTarget;
+  }
+
+  function getClosestPointOnRegion(point, region) {
+    let closestTarget = null;
+
+    region.polygons.forEach((polygon) => {
+      polygon.forEach((ring) => {
+        const target = getClosestPointOnRing(point, ring);
+        if (target && (!closestTarget || target.mapDistance < closestTarget.mapDistance)) {
+          closestTarget = target;
+        }
+      });
+    });
+
+    if (closestTarget) {
+      return closestTarget;
+    }
+
+    const bounds = getRegionProjectedBounds(region);
+    const fallbackPoint = {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2,
+    };
+
+    return {
+      point: fallbackPoint,
+      lonLat: unproject(fallbackPoint),
+      mapDistance: Math.hypot(point.x - fallbackPoint.x, point.y - fallbackPoint.y),
+    };
+  }
+
+  function getClosestPointOnRing(point, ring) {
+    let closestTarget = null;
+
+    for (let index = 1; index < ring.length; index += 1) {
+      const start = project(ring[index - 1]);
+      const end = project(ring[index]);
+
+      if (crossesMapEdge(start, end)) {
+        continue;
+      }
+
+      const closestPoint = getClosestPointOnSegment(point, start, end);
+      const mapDistance = Math.hypot(point.x - closestPoint.x, point.y - closestPoint.y);
+
+      if (!closestTarget || mapDistance < closestTarget.mapDistance) {
+        closestTarget = {
+          point: closestPoint,
+          lonLat: unproject(closestPoint),
+          mapDistance,
+        };
+      }
+    }
+
+    return closestTarget;
+  }
+
+  function getDistanceLabelPoint(start, end) {
+    const midpoint = {
+      x: (start.x + end.x) / 2,
+      y: (start.y + end.y) / 2,
+    };
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+
+    if (length === 0) {
+      return midpoint;
+    }
+
+    const offset = scaledLength(14);
+
+    return {
+      x: midpoint.x - (dy / length) * offset,
+      y: midpoint.y + (dx / length) * offset,
+    };
+  }
+
   function findRegions(lonLat) {
     return geography.regions.filter((region) =>
       region.polygons.some((polygon) => pointInPolygon(lonLat, polygon)),
@@ -638,12 +778,18 @@
   }
 
   function distanceToSegment(point, start, end) {
+    const closest = getClosestPointOnSegment(point, start, end);
+
+    return Math.hypot(point.x - closest.x, point.y - closest.y);
+  }
+
+  function getClosestPointOnSegment(point, start, end) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const lengthSquared = dx * dx + dy * dy;
 
     if (lengthSquared === 0) {
-      return Math.hypot(point.x - start.x, point.y - start.y);
+      return { x: start.x, y: start.y };
     }
 
     const t = clamp(
@@ -651,12 +797,11 @@
       0,
       1,
     );
-    const closest = {
+
+    return {
       x: start.x + t * dx,
       y: start.y + t * dy,
     };
-
-    return Math.hypot(point.x - closest.x, point.y - closest.y);
   }
 
   function buildGeography(gameData) {
@@ -1055,6 +1200,40 @@
       .replace(/^the\s+/, "")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function haversineDistanceKm(startLonLat, endLonLat) {
+    const [startLon, startLat] = startLonLat;
+    const [endLon, endLat] = endLonLat;
+    const startLatRad = toRadians(startLat);
+    const endLatRad = toRadians(endLat);
+    const deltaLat = toRadians(endLat - startLat);
+    const deltaLon = toRadians(normalizeLongitudeDelta(endLon - startLon));
+    const a =
+      Math.sin(deltaLat / 2) ** 2 +
+      Math.cos(startLatRad) * Math.cos(endLatRad) * Math.sin(deltaLon / 2) ** 2;
+
+    return (
+      2 *
+      EARTH_RADIUS_KM *
+      Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)))
+    );
+  }
+
+  function normalizeLongitudeDelta(delta) {
+    return ((delta + 540) % 360) - 180;
+  }
+
+  function toRadians(degrees) {
+    return (degrees * Math.PI) / 180;
+  }
+
+  function formatDistanceKm(distanceKm) {
+    if (distanceKm < 1) {
+      return "<1 km";
+    }
+
+    return `${Math.round(distanceKm).toLocaleString()} km`;
   }
 
   function slugify(value) {
