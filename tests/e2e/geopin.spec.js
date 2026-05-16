@@ -67,6 +67,34 @@ test("can answer a deterministic map question", async ({ page }) => {
   await expectNoRuntimeFailures(failures);
 });
 
+test("renders flag clues as image assets", async ({ page }) => {
+  const failures = await openGame(page);
+
+  await page.evaluate(() => {
+    window.__GEOPIN_TEST__.setQuestions([
+      {
+        id: "test-flag-canada",
+        type: "Flag",
+        points: 100,
+        clue: "🇨🇦",
+        clueLabel: "Canadian flag",
+        prompt: "Click the country represented by this flag.",
+        answers: ["canada"],
+      },
+    ]);
+  });
+
+  const clue = page.locator("#question-clue");
+  const image = clue.locator(".flag-clue-image");
+
+  await expect(clue).toHaveAttribute("aria-label", "Canadian flag");
+  await expect(clue).toHaveClass(/has-flag-image/);
+  await expect(image).toHaveAttribute("alt", "Canadian flag");
+  await expect(image).toHaveAttribute("src", /1f1e8-1f1e6\.svg$/);
+
+  await expectNoRuntimeFailures(failures);
+});
+
 test("supports outline mode text answers", async ({ page }) => {
   const failures = await openGame(page);
 

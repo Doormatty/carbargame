@@ -24,6 +24,7 @@
   const RECENT_HISTORY_LIMIT = 10;
   const TREND_DAYS = 14;
   const SUMMARY_LIST_LIMIT = 5;
+  const TWEMOJI_FLAG_BASE_URL = "https://cdn.jsdelivr.net/npm/twemoji@14.0.2/assets/svg/";
   const COUNTRY_ANSWER_ALIASES = {
     "bosnia-and-herzegovina": ["bosnia", "bosnia herzegovina"],
     "cabo-verde": ["cape verde"],
@@ -294,13 +295,51 @@
       drawOutlineQuestion(question);
       requestAnimationFrame(() => elements.countryAnswer.focus());
     } else {
-      elements.questionClue.textContent = question.clue;
-      elements.questionClue.setAttribute("aria-label", question.clueLabel || question.clue);
-      elements.questionClue.classList.toggle("is-text", !isFlagClue(question.clue));
+      renderQuestionClue(question);
     }
 
     updateStats();
     renderProgress();
+  }
+
+  function renderQuestionClue(question) {
+    const flagImageUrl = getFlagImageUrl(question.clue);
+
+    elements.questionClue.replaceChildren();
+    elements.questionClue.setAttribute("aria-label", question.clueLabel || question.clue);
+    elements.questionClue.classList.toggle("is-text", !flagImageUrl);
+    elements.questionClue.classList.toggle("has-flag-image", Boolean(flagImageUrl));
+
+    if (!flagImageUrl) {
+      elements.questionClue.textContent = question.clue;
+      return;
+    }
+
+    const flag = document.createElement("span");
+    flag.className = "flag-clue";
+
+    const image = document.createElement("img");
+    image.className = "flag-clue-image";
+    image.alt = question.clueLabel || "Flag";
+    image.decoding = "async";
+    image.loading = "eager";
+    image.referrerPolicy = "no-referrer";
+    image.addEventListener(
+      "error",
+      () => {
+        flag.classList.add("is-fallback");
+      },
+      { once: true },
+    );
+    image.src = flagImageUrl;
+
+    const fallback = document.createElement("span");
+    fallback.className = "flag-clue-fallback";
+    fallback.setAttribute("aria-hidden", "true");
+    fallback.textContent = getFlagCountryCode(question.clue) || question.clue;
+
+    flag.append(image, fallback);
+    elements.questionClue.append(flag);
   }
 
   function nextQuestion() {
@@ -2020,8 +2059,47 @@
     return `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
   }
 
-  function isFlagClue(clue) {
-    return clue.length <= 8 && /\p{Regional_Indicator}/u.test(clue);
+  function getFlagImageUrl(clue) {
+    const codepoints = getFlagCodepoints(clue);
+    return codepoints ? `${TWEMOJI_FLAG_BASE_URL}${codepoints}.svg` : "";
+  }
+
+  function getFlagCodepoints(clue) {
+    if (typeof clue !== "string") {
+      return "";
+    }
+
+    const characters = Array.from(clue.trim());
+    if (
+      characters.length !== 2 ||
+      !characters.every((character) => isRegionalIndicator(character.codePointAt(0)))
+    ) {
+      return "";
+    }
+
+    return characters.map((character) => character.codePointAt(0).toString(16)).join("-");
+  }
+
+  function getFlagCountryCode(clue) {
+    if (typeof clue !== "string") {
+      return "";
+    }
+
+    const characters = Array.from(clue.trim());
+    if (
+      characters.length !== 2 ||
+      !characters.every((character) => isRegionalIndicator(character.codePointAt(0)))
+    ) {
+      return "";
+    }
+
+    return characters
+      .map((character) => String.fromCharCode(character.codePointAt(0) - 0x1f1e6 + 65))
+      .join("");
+  }
+
+  function isRegionalIndicator(codepoint) {
+    return codepoint >= 0x1f1e6 && codepoint <= 0x1f1ff;
   }
 
   function normalizeTypedAnswer(value) {
