@@ -109,7 +109,94 @@
     pointer: null,
   };
 
+  installTestHooks();
   init();
+
+  function installTestHooks() {
+    if (!window.__GEOPIN_ENABLE_TEST_HOOKS__) {
+      return;
+    }
+
+    window.__GEOPIN_TEST__ = {
+      GAME_MODES,
+      get geography() {
+        return geography;
+      },
+      get regionById() {
+        return regionById;
+      },
+      get state() {
+        return state;
+      },
+      answerAt,
+      answerText,
+      getCurrentQuestion,
+      getRegionProjectedBounds,
+      project,
+      setMode,
+      setQuestions,
+      unproject,
+    };
+  }
+
+  function setQuestions(questions, mode = GAME_MODES.MAP) {
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new Error("Test questions must be a non-empty array.");
+    }
+
+    state.mode = mode;
+    state.questions = questions.map((question, index) =>
+      normalizeTestQuestion(question, index, mode),
+    );
+    state.currentIndex = 0;
+    state.score = 0;
+    state.streak = 0;
+    state.answered = false;
+    state.foundAnswerIds = [];
+    state.remainingAnswerIds = [];
+    updateModeControls();
+    resetView();
+    renderQuestion();
+  }
+
+  function normalizeTestQuestion(question, index, mode) {
+    const answers = (Array.isArray(question.answers)
+      ? question.answers
+      : [question.answers]).filter((answer) => typeof answer === "string" && answer);
+
+    if (!answers.length) {
+      throw new Error(`Test question ${index} must include at least one answer id.`);
+    }
+
+    const normalized = {
+      id: question.id || `test-question-${index}`,
+      type: question.type || "Test",
+      points: Number.isFinite(question.points) ? question.points : 100,
+      clue: question.clue || "Test clue",
+      clueLabel: question.clueLabel || question.clue || "Test clue",
+      prompt: question.prompt || "Test question",
+      answers: answers.slice(),
+    };
+
+    if (mode === GAME_MODES.OUTLINE) {
+      const regionId = question.regionId || answers[0];
+      const region = regionById.get(regionId);
+      normalized.mode = GAME_MODES.OUTLINE;
+      normalized.regionId = regionId;
+      normalized.acceptedAnswers = Array.isArray(question.acceptedAnswers)
+        ? question.acceptedAnswers.slice()
+        : region
+          ? buildAcceptedAnswers(region)
+          : [];
+      normalized.outlineTransform = question.outlineTransform || {
+        angle: 0,
+        mirrorX: false,
+        mirrorY: false,
+      };
+    }
+
+    return normalized;
+  }
 
   function init() {
     drawLand();
