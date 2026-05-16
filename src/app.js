@@ -17,6 +17,7 @@
   const OUTLINE_VIEW_HEIGHT = 320;
   const OUTLINE_PADDING = 34;
   const OUTLINE_MIN_PROJECTED_AREA = 14;
+  const STREAK_BONUS_POINTS = 10;
   const PROGRESS_STORAGE_KEY = "geopin-progress-v1";
   const RECENT_ATTEMPT_LIMIT = 100;
   const RECENT_FORM_LIMIT = 20;
@@ -101,6 +102,8 @@
     score: 0,
     streak: 0,
     answered: false,
+    foundAnswerIds: [],
+    remainingAnswerIds: [],
     progress: loadProgress(),
     view: { x: 0, y: 0, width: MAP_WIDTH, height: MAP_HEIGHT },
     pointer: null,
@@ -170,14 +173,17 @@
   function renderQuestion() {
     const question = getCurrentQuestion();
     const isOutlineMode = state.mode === GAME_MODES.OUTLINE;
+    const isMultiAnswer = isMultiAnswerQuestion(question);
 
     state.answered = false;
+    state.foundAnswerIds = [];
+    state.remainingAnswerIds = question.answers.slice();
     elements.answerLayer.replaceChildren();
     elements.pinLayer.replaceChildren();
     elements.outlineLayer.replaceChildren();
     elements.outlineLayer.classList.remove("is-correct", "is-wrong");
-    elements.nextButton.disabled = true;
-    elements.nextButton.textContent = "Next";
+    elements.nextButton.disabled = !isMultiAnswer;
+    elements.nextButton.textContent = isMultiAnswer ? "Done" : "Next";
     elements.feedback.className = "feedback";
     elements.feedback.textContent = "";
     elements.countryAnswer.value = "";
@@ -185,7 +191,9 @@
     elements.submitAnswer.disabled = !isOutlineMode;
 
     elements.questionType.textContent = question.type;
-    elements.questionPoints.textContent = `${question.points} pts`;
+    elements.questionPoints.textContent = isMultiAnswer
+      ? `${question.points} pts each`
+      : `${question.points} pts`;
     elements.questionText.textContent = question.prompt;
     elements.questionPanel.classList.toggle("is-outline", isOutlineMode);
     elements.mapStage.classList.toggle("is-outline", isOutlineMode);
@@ -210,6 +218,9 @@
 
   function nextQuestion() {
     if (!state.answered) {
+      if (isMultiAnswerQuestion(getCurrentQuestion())) {
+        finishMultiAnswerQuestion();
+      }
       return;
     }
 
@@ -267,50 +278,133 @@
     return Array.from(answers).filter(Boolean);
   }
 
+  function isMultiAnswerQuestion(question) {
+    return state.mode === GAME_MODES.MAP && question.answers.length > 1;
+  }
+
+  function getAnswerPoints(question) {
+    return question.points + state.streak * STREAK_BONUS_POINTS;
+  }
+
+  function markAnswerFound(regionId) {
+    if (!state.foundAnswerIds.includes(regionId)) {
+      state.foundAnswerIds.push(regionId);
+    }
+
+    state.remainingAnswerIds = state.remainingAnswerIds.filter((answerId) => answerId !== regionId);
+  }
+
+  function findFoundAnswerRegion(point, clickedRegions) {
+    const clickedFoundRegion = clickedRegions.find((region) =>
+      state.foundAnswerIds.includes(region.id),
+    );
+
+    if (clickedFoundRegion) {
+      return clickedFoundRegion;
+    }
+
+    return clickedRegions.length
+      ? null
+      : findNearbyAnswerRegion(point, state.foundAnswerIds);
+  }
+
+  function getCorrectAnswerFeedback(region, earned, question) {
+    if (!isMultiAnswerQuestion(question)) {
+      return `Correct: ${region.name}. +${earned} points.`;
+    }
+
+    const remainingCount = state.remainingAnswerIds.length;
+    if (!remainingCount) {
+      return `Correct: ${region.name}. +${earned} points. All answers found.`;
+    }
+
+    return `Correct: ${region.name}. +${earned} points. ${formatAnswerCount(remainingCount)} remaining.`;
+  }
+
+  function getDoneFeedback(question, remainingIds) {
+    const foundCount = state.foundAnswerIds.length;
+    const totalCount = question.answers.length;
+
+    if (!remainingIds.length) {
+      return `Done. Found all ${formatAnswerCount(totalCount)}.`;
+    }
+
+    if (!foundCount) {
+      return `Done. Answers: ${formatRegionList(remainingIds)}.`;
+    }
+
+    return `Done. Found ${foundCount} of ${totalCount}. Remaining answers: ${formatRegionList(remainingIds)}.`;
+  }
+
+  function formatAnswerCount(count) {
+    return `${count} answer${count === 1 ? "" : "s"}`;
+  }
+
   function answerAt(point) {
     if (state.mode !== GAME_MODES.MAP || state.answered) {
       return;
     }
 
     const question = getCurrentQuestion();
+    const isMultiAnswer = isMultiAnswerQuestion(question);
+    const answerIds = isMultiAnswer ? state.remainingAnswerIds : question.answers;
     const lonLat = unproject(point);
     const clickedRegions = findRegions(lonLat);
     const forgivingAnswer = clickedRegions.length
       ? null
-      : findNearbyAnswerRegion(point, question.answers);
+      : findNearbyAnswerRegion(point, answerIds);
     const correctRegion =
-      clickedRegions.find((region) => question.answers.includes(region.id)) || forgivingAnswer;
+      clickedRegions.find((region) => answerIds.includes(region.id)) || forgivingAnswer;
     const clickedRegion = correctRegion || clickedRegions[0];
     const isCorrect = Boolean(correctRegion);
 
-    state.answered = true;
-    addPin(point, isCorrect);
-    showAnswerZones(question.answers, "correct");
+    if (isMultiAnswer && !isCorrect) {
+      const foundRegion = findFoundAnswerRegion(point, clickedRegions);
+      if (foundRegion) {
+        elements.feedback.className = "feedback good";
+        elements.feedback.textContent = `Already found: ${foundRegion.name}.`;
+        return;
+      }
+    }
+
+    addPin(point, isCorrect, !isMultiAnswer);
 
     if (clickedRegion && !isCorrect) {
       showAnswerZones([clickedRegion.id], "wrong");
     }
 
     if (isCorrect) {
-      const earned = question.points + state.streak * 10;
+      const earned = getAnswerPoints(question);
       state.score += earned;
       state.streak += 1;
       elements.feedback.className = "feedback good";
-      elements.feedback.textContent = `Correct: ${correctRegion.name}. +${earned} points.`;
+      showAnswerZones([correctRegion.id], "correct");
+      markAnswerFound(correctRegion.id);
+      elements.feedback.textContent = getCorrectAnswerFeedback(correctRegion, earned, question);
       recordAnswer(question, {
         isCorrect,
         earned,
         guessLabel: correctRegion.name,
         matchedRegionId: correctRegion.id,
       });
+
+      if (isMultiAnswer && state.remainingAnswerIds.length > 0) {
+        updateStats();
+        renderProgress();
+        return;
+      }
     } else {
-      const missDistance = showMissDistance(point, question.answers);
+      const missedAnswerIds = isMultiAnswer ? state.remainingAnswerIds : question.answers;
+      const missDistance = showMissDistance(point, missedAnswerIds);
       const clicked = describeClickedArea(lonLat, clickedRegion);
-      const answers = formatRegionList(question.answers);
+      const answers = formatRegionList(missedAnswerIds);
       const distanceText = missDistance ? ` You were ${missDistance.distanceText} away.` : "";
       state.streak = 0;
       elements.feedback.className = "feedback bad";
-      elements.feedback.textContent = `No: that was ${clicked}. Answer: ${answers}.${distanceText}`;
+      showAnswerZones(missedAnswerIds, "correct");
+      elements.feedback.textContent = isMultiAnswer && state.foundAnswerIds.length > 0
+        ? `No: that was ${clicked}. Remaining answers: ${answers}.${distanceText}`
+        : `No: that was ${clicked}. Answer: ${answers}.${distanceText}`;
       recordAnswer(question, {
         isCorrect,
         earned: 0,
@@ -343,14 +437,13 @@
     const region = regionById.get(question.regionId);
     const isCorrect = question.acceptedAnswers.includes(normalizedAnswer);
 
-    state.answered = true;
     elements.countryAnswer.disabled = true;
     elements.submitAnswer.disabled = true;
     elements.outlineLayer.classList.toggle("is-correct", isCorrect);
     elements.outlineLayer.classList.toggle("is-wrong", !isCorrect);
 
     if (isCorrect) {
-      const earned = question.points + state.streak * 10;
+      const earned = getAnswerPoints(question);
       state.score += earned;
       state.streak += 1;
       elements.feedback.className = "feedback good";
@@ -377,11 +470,26 @@
   }
 
   function finishAnswer() {
+    state.answered = true;
     elements.nextButton.disabled = false;
     elements.nextButton.textContent =
       state.currentIndex >= state.questions.length - 1 ? "Play again" : "Next";
     updateStats();
     renderProgress();
+  }
+
+  function finishMultiAnswerQuestion() {
+    const question = getCurrentQuestion();
+    const foundCount = state.foundAnswerIds.length;
+    const remainingIds = state.remainingAnswerIds.slice();
+
+    if (remainingIds.length > 0) {
+      showAnswerZones(remainingIds, "correct");
+    }
+
+    elements.feedback.className = foundCount > 0 ? "feedback good" : "feedback";
+    elements.feedback.textContent = getDoneFeedback(question, remainingIds);
+    finishAnswer();
   }
 
   function recordAnswer(question, result) {
@@ -1134,7 +1242,7 @@
     };
   }
 
-  function addPin(point, isCorrect) {
+  function addPin(point, isCorrect, replaceExisting = true) {
     const pin = createSvgElement("g", {
       class: "pin",
       transform: `translate(${point.x} ${point.y})`,
@@ -1152,7 +1260,11 @@
       }),
     );
 
-    elements.pinLayer.replaceChildren(pin);
+    if (replaceExisting) {
+      elements.pinLayer.replaceChildren(pin);
+    } else {
+      elements.pinLayer.append(pin);
+    }
   }
 
   function showMissDistance(clickPoint, answerIds) {
