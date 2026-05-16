@@ -106,6 +106,87 @@
           </div>
         </section>
       </section>
+
+      <section class="progress-panel" aria-label="Knowledge statistics">
+        <div class="progress-header">
+          <div>
+            <p class="eyebrow">Knowledge Stats</p>
+            <h2>Progress Over Time</h2>
+          </div>
+          <button id="clear-progress" type="button">Clear History</button>
+        </div>
+
+        <div class="progress-grid">
+          <article class="progress-card">
+            <h3>Lifetime</h3>
+            <div class="metric-grid">
+              <div class="metric">
+                <span>Accuracy</span>
+                <strong id="lifetime-accuracy">0%</strong>
+              </div>
+              <div class="metric">
+                <span>Answered</span>
+                <strong id="lifetime-answered">0</strong>
+              </div>
+              <div class="metric">
+                <span>Best Streak</span>
+                <strong id="best-streak">0</strong>
+              </div>
+              <div class="metric">
+                <span>Best Game</span>
+                <strong id="best-score">0</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="progress-card">
+            <h3>Recent Form</h3>
+            <div class="metric-grid">
+              <div class="metric">
+                <span>Last 20</span>
+                <strong id="recent-accuracy">0%</strong>
+              </div>
+              <div class="metric">
+                <span>Today</span>
+                <strong id="today-answered">0</strong>
+              </div>
+              <div class="metric">
+                <span>Map</span>
+                <strong id="map-accuracy">0%</strong>
+              </div>
+              <div class="metric">
+                <span>Outlines</span>
+                <strong id="outline-accuracy">0%</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="progress-card trend-card">
+            <h3>Daily Trend</h3>
+            <div id="daily-trend" class="daily-trend" aria-label="Daily accuracy trend"></div>
+          </article>
+
+          <article class="progress-card">
+            <h3>By Category</h3>
+            <div id="category-stats" class="stat-list"></div>
+          </article>
+
+          <article class="progress-card">
+            <h3>Focus Areas</h3>
+            <div id="focus-stats" class="stat-list"></div>
+          </article>
+
+          <article class="progress-card">
+            <h3>Strongest Areas</h3>
+            <div id="strong-stats" class="stat-list"></div>
+          </article>
+        </div>
+
+        <article class="progress-card history-card">
+          <h3>Recent Answers</h3>
+          <div id="recent-history" class="history-list"></div>
+        </article>
+      </section>
     </main>
 
     <script src="./src/data.js" defer></script>

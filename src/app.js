@@ -17,6 +17,12 @@
   const OUTLINE_VIEW_HEIGHT = 320;
   const OUTLINE_PADDING = 34;
   const OUTLINE_MIN_PROJECTED_AREA = 14;
+  const PROGRESS_STORAGE_KEY = "geopin-progress-v1";
+  const RECENT_ATTEMPT_LIMIT = 100;
+  const RECENT_FORM_LIMIT = 20;
+  const RECENT_HISTORY_LIMIT = 10;
+  const TREND_DAYS = 14;
+  const SUMMARY_LIST_LIMIT = 5;
   const COUNTRY_ANSWER_ALIASES = {
     "bosnia-and-herzegovina": ["bosnia", "bosnia herzegovina"],
     "cabo-verde": ["cape verde"],
@@ -72,6 +78,20 @@
     zoomIn: document.querySelector("#zoom-in"),
     zoomOut: document.querySelector("#zoom-out"),
     zoomReset: document.querySelector("#zoom-reset"),
+    clearProgress: document.querySelector("#clear-progress"),
+    lifetimeAccuracy: document.querySelector("#lifetime-accuracy"),
+    lifetimeAnswered: document.querySelector("#lifetime-answered"),
+    bestStreak: document.querySelector("#best-streak"),
+    bestScore: document.querySelector("#best-score"),
+    recentAccuracy: document.querySelector("#recent-accuracy"),
+    todayAnswered: document.querySelector("#today-answered"),
+    mapAccuracy: document.querySelector("#map-accuracy"),
+    outlineAccuracy: document.querySelector("#outline-accuracy"),
+    dailyTrend: document.querySelector("#daily-trend"),
+    categoryStats: document.querySelector("#category-stats"),
+    focusStats: document.querySelector("#focus-stats"),
+    strongStats: document.querySelector("#strong-stats"),
+    recentHistory: document.querySelector("#recent-history"),
   };
 
   const state = {
@@ -81,6 +101,7 @@
     score: 0,
     streak: 0,
     answered: false,
+    progress: loadProgress(),
     view: { x: 0, y: 0, width: MAP_WIDTH, height: MAP_HEIGHT },
     pointer: null,
   };
@@ -103,6 +124,7 @@
     elements.zoomIn.addEventListener("click", () => zoomAtCenter(0.58));
     elements.zoomOut.addEventListener("click", () => zoomAtCenter(1.72));
     elements.zoomReset.addEventListener("click", resetView);
+    elements.clearProgress.addEventListener("click", clearProgressHistory);
 
     elements.svg.addEventListener("pointerdown", handlePointerDown);
     elements.svg.addEventListener("pointermove", handlePointerMove);
@@ -183,6 +205,7 @@
     }
 
     updateStats();
+    renderProgress();
   }
 
   function nextQuestion() {
@@ -274,6 +297,12 @@
       state.streak += 1;
       elements.feedback.className = "feedback good";
       elements.feedback.textContent = `Correct: ${correctRegion.name}. +${earned} points.`;
+      recordAnswer(question, {
+        isCorrect,
+        earned,
+        guessLabel: correctRegion.name,
+        matchedRegionId: correctRegion.id,
+      });
     } else {
       const missDistance = showMissDistance(point, question.answers);
       const clicked = describeClickedArea(lonLat, clickedRegion);
@@ -282,6 +311,13 @@
       state.streak = 0;
       elements.feedback.className = "feedback bad";
       elements.feedback.textContent = `No: that was ${clicked}. Answer: ${answers}.${distanceText}`;
+      recordAnswer(question, {
+        isCorrect,
+        earned: 0,
+        guessLabel: clicked,
+        guessedRegionId: clickedRegion?.id || null,
+        distanceKm: missDistance?.distanceKm || null,
+      });
     }
 
     finishAnswer();
@@ -319,10 +355,22 @@
       state.streak += 1;
       elements.feedback.className = "feedback good";
       elements.feedback.textContent = `Correct: ${region.name}. +${earned} points.`;
+      recordAnswer(question, {
+        isCorrect,
+        earned,
+        guessLabel: value.trim(),
+        matchedRegionId: region.id,
+      });
     } else {
       state.streak = 0;
       elements.feedback.className = "feedback bad";
       elements.feedback.textContent = `No: Answer: ${region.name}.`;
+      recordAnswer(question, {
+        isCorrect,
+        earned: 0,
+        guessLabel: value.trim(),
+        matchedRegionId: null,
+      });
     }
 
     finishAnswer();
@@ -333,6 +381,594 @@
     elements.nextButton.textContent =
       state.currentIndex >= state.questions.length - 1 ? "Play again" : "Next";
     updateStats();
+    renderProgress();
+  }
+
+  function recordAnswer(question, result) {
+    const now = new Date();
+    const isCorrect = Boolean(result.isCorrect);
+    const earned = asCount(result.earned);
+    const progress = state.progress;
+    const dayKey = getLocalDateKey(now);
+    const questionLabel = getQuestionLabel(question);
+
+    incrementProgressStats(progress.totals, isCorrect, earned);
+    progress.totals.bestStreak = Math.max(progress.totals.bestStreak, state.streak);
+    progress.totals.bestScore = Math.max(progress.totals.bestScore, state.score);
+
+    incrementProgressStats(
+      getProgressStats(progress.modes, state.mode, {
+        label: formatModeName(state.mode),
+      }),
+      isCorrect,
+      earned,
+    );
+    incrementProgressStats(
+      getProgressStats(progress.types, question.type, {
+        label: question.type,
+      }),
+      isCorrect,
+      earned,
+    );
+    const questionStats = getProgressStats(progress.questions, question.id, {
+      label: questionLabel,
+      type: question.type,
+      mode: state.mode,
+    });
+    incrementProgressStats(questionStats, isCorrect, earned);
+    questionStats.currentStreak = isCorrect ? questionStats.currentStreak + 1 : 0;
+    questionStats.bestStreak = Math.max(questionStats.bestStreak, questionStats.currentStreak);
+    questionStats.lastAnsweredAt = now.toISOString();
+
+    if (isCorrect) {
+      questionStats.lastCorrectAt = now.toISOString();
+    }
+
+    incrementProgressStats(
+      getProgressStats(progress.days, dayKey, {
+        label: dayKey,
+      }),
+      isCorrect,
+      earned,
+    );
+
+    progress.recent.push({
+      at: now.toISOString(),
+      mode: state.mode,
+      modeLabel: formatModeName(state.mode),
+      type: question.type,
+      questionId: question.id,
+      questionLabel,
+      prompt: question.prompt,
+      answers: question.answers.map(getRegionName),
+      guessLabel: result.guessLabel || "",
+      isCorrect,
+      earned,
+      score: state.score,
+      streak: state.streak,
+      distanceKm: Number.isFinite(result.distanceKm) ? round(result.distanceKm) : null,
+    });
+
+    if (progress.recent.length > RECENT_ATTEMPT_LIMIT) {
+      progress.recent.splice(0, progress.recent.length - RECENT_ATTEMPT_LIMIT);
+    }
+
+    saveProgress(progress);
+  }
+
+  function clearProgressHistory() {
+    if (!window.confirm("Clear all saved progress statistics?")) {
+      return;
+    }
+
+    state.progress = createEmptyProgress();
+    saveProgress(state.progress);
+    renderProgress();
+  }
+
+  function renderProgress() {
+    const progress = state.progress;
+    const todayStats = progress.days[getLocalDateKey(new Date())] || createProgressStats();
+    const mapStats = progress.modes[GAME_MODES.MAP] || createProgressStats();
+    const outlineStats = progress.modes[GAME_MODES.OUTLINE] || createProgressStats();
+
+    elements.lifetimeAccuracy.textContent = formatAccuracy(progress.totals);
+    elements.lifetimeAnswered.textContent = formatInteger(progress.totals.attempts);
+    elements.bestStreak.textContent = formatInteger(progress.totals.bestStreak);
+    elements.bestScore.textContent = formatInteger(progress.totals.bestScore);
+    elements.recentAccuracy.textContent = formatRecentAccuracy(progress.recent);
+    elements.todayAnswered.textContent = todayStats.attempts
+      ? `${formatInteger(todayStats.attempts)} - ${formatAccuracy(todayStats)}`
+      : "0";
+    elements.mapAccuracy.textContent = formatAccuracy(mapStats);
+    elements.outlineAccuracy.textContent = formatAccuracy(outlineStats);
+
+    renderDailyTrend(progress);
+    renderCategoryStats(progress);
+    renderQuestionStatLists(progress);
+    renderRecentHistory(progress);
+  }
+
+  function renderDailyTrend(progress) {
+    const fragment = document.createDocumentFragment();
+    const today = new Date();
+
+    for (let offset = TREND_DAYS - 1; offset >= 0; offset -= 1) {
+      const date = addDays(today, -offset);
+      const key = getLocalDateKey(date);
+      const stats = progress.days[key] || createProgressStats();
+      const accuracy = getAccuracy(stats);
+      const day = document.createElement("div");
+      const track = document.createElement("div");
+      const bar = document.createElement("div");
+      const label = document.createElement("div");
+
+      day.className = "trend-day";
+      track.className = "trend-bar-track";
+      bar.className = "trend-bar";
+      label.className = "trend-label";
+      label.textContent = formatShortDate(date);
+
+      if (stats.attempts) {
+        bar.style.height = `${Math.max(6, Math.round(accuracy * 100))}%`;
+        day.title = `${formatLongDate(date)}: ${stats.correct}/${stats.attempts} correct (${formatAccuracy(stats)})`;
+      } else {
+        bar.classList.add("is-empty");
+        bar.style.height = "3px";
+        day.title = `${formatLongDate(date)}: no answers`;
+      }
+
+      track.append(bar);
+      day.append(track, label);
+      fragment.append(day);
+    }
+
+    elements.dailyTrend.replaceChildren(fragment);
+  }
+
+  function renderCategoryStats(progress) {
+    const categories = Object.values(progress.types)
+      .filter((stats) => stats.attempts > 0)
+      .sort((left, right) => right.attempts - left.attempts || getAccuracy(right) - getAccuracy(left))
+      .slice(0, SUMMARY_LIST_LIMIT);
+
+    renderStatsList(
+      elements.categoryStats,
+      categories.map((stats) => ({
+        label: stats.label || "Unknown",
+        value: formatAccuracy(stats),
+        sub: `${formatInteger(stats.correct)}/${formatInteger(stats.attempts)} correct`,
+        fill: getAccuracy(stats),
+        low: getAccuracy(stats) < 0.5,
+      })),
+      "Answer questions to build category stats.",
+    );
+  }
+
+  function renderQuestionStatLists(progress) {
+    const questions = Object.values(progress.questions).filter((stats) => stats.attempts > 0);
+    const focusAreas = questions
+      .filter((stats) => stats.correct < stats.attempts)
+      .sort(
+        (left, right) =>
+          getAccuracy(left) - getAccuracy(right) ||
+          right.attempts - left.attempts ||
+          compareLastAnswered(right, left),
+      )
+      .slice(0, SUMMARY_LIST_LIMIT);
+    const strongAreas = questions
+      .filter((stats) => stats.correct > 0)
+      .sort(
+        (left, right) =>
+          getAccuracy(right) - getAccuracy(left) ||
+          right.attempts - left.attempts ||
+          compareLastAnswered(right, left),
+      )
+      .slice(0, SUMMARY_LIST_LIMIT);
+
+    renderStatsList(
+      elements.focusStats,
+      focusAreas.map((stats) => questionStatsToRow(stats, true)),
+      "Missed questions will appear here.",
+    );
+    renderStatsList(
+      elements.strongStats,
+      strongAreas.map((stats) => questionStatsToRow(stats, false)),
+      "Correct answers will appear here.",
+    );
+  }
+
+  function renderRecentHistory(progress) {
+    const attempts = progress.recent.slice(-RECENT_HISTORY_LIMIT).reverse();
+    const fragment = document.createDocumentFragment();
+
+    if (!attempts.length) {
+      renderEmptyState(elements.recentHistory, "Recent answers will appear here.");
+      return;
+    }
+
+    attempts.forEach((attempt) => {
+      const row = document.createElement("div");
+      const mark = document.createElement("span");
+      const text = document.createElement("div");
+      const title = document.createElement("div");
+      const meta = document.createElement("div");
+      const result = attempt.isCorrect ? `Correct +${formatInteger(attempt.earned)}` : "Wrong";
+      const details = [
+        formatRelativeTime(attempt.at),
+        result,
+        `Answer: ${formatAnswerNames(attempt.answers)}`,
+      ];
+
+      if (!attempt.isCorrect && attempt.guessLabel) {
+        details.push(`Guess: ${attempt.guessLabel}`);
+      }
+
+      if (!attempt.isCorrect && Number.isFinite(attempt.distanceKm)) {
+        details.push(`${formatDistanceKm(attempt.distanceKm)} away`);
+      }
+
+      row.className = "history-row";
+      mark.className = "history-mark";
+      mark.classList.toggle("is-correct", attempt.isCorrect);
+      text.className = "history-text";
+      title.className = "history-title";
+      meta.className = "history-meta";
+      title.textContent = attempt.questionLabel;
+      meta.textContent = details.filter(Boolean).join(" - ");
+      text.append(title, meta);
+      row.append(mark, text);
+      fragment.append(row);
+    });
+
+    elements.recentHistory.replaceChildren(fragment);
+  }
+
+  function questionStatsToRow(stats, low) {
+    return {
+      label: stats.label || "Question",
+      value: formatAccuracy(stats),
+      sub: `${stats.type || "Question"} - ${formatInteger(stats.correct)}/${formatInteger(stats.attempts)} correct`,
+      fill: getAccuracy(stats),
+      low,
+    };
+  }
+
+  function renderStatsList(container, rows, emptyText) {
+    const fragment = document.createDocumentFragment();
+
+    if (!rows.length) {
+      renderEmptyState(container, emptyText);
+      return;
+    }
+
+    rows.forEach((row) => {
+      const item = document.createElement("div");
+      const main = document.createElement("div");
+      const label = document.createElement("div");
+      const value = document.createElement("div");
+      const sub = document.createElement("div");
+      const bar = document.createElement("div");
+      const fill = document.createElement("span");
+
+      item.className = "stat-row";
+      main.className = "stat-row-main";
+      label.className = "stat-row-label";
+      value.className = "stat-row-value";
+      sub.className = "stat-row-sub";
+      bar.className = "stat-bar";
+      label.textContent = row.label;
+      value.textContent = row.value;
+      sub.textContent = row.sub;
+      fill.style.setProperty("--fill", `${Math.round(row.fill * 100)}%`);
+      fill.classList.toggle("is-low", row.low);
+      bar.append(fill);
+      main.append(label, value);
+      item.append(main, sub, bar);
+      fragment.append(item);
+    });
+
+    container.replaceChildren(fragment);
+  }
+
+  function renderEmptyState(container, text) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = text;
+    container.replaceChildren(empty);
+  }
+
+  function loadProgress() {
+    try {
+      const saved = window.localStorage.getItem(PROGRESS_STORAGE_KEY);
+      return saved ? normalizeProgress(JSON.parse(saved)) : createEmptyProgress();
+    } catch (error) {
+      return createEmptyProgress();
+    }
+  }
+
+  function saveProgress(progress) {
+    try {
+      window.localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+    } catch (error) {
+      // Progress tracking is optional when storage is unavailable.
+    }
+  }
+
+  function normalizeProgress(saved) {
+    const progress = createEmptyProgress();
+
+    if (!isRecord(saved)) {
+      return progress;
+    }
+
+    progress.totals = {
+      ...progress.totals,
+      ...normalizeProgressStats(saved.totals),
+      bestStreak: asCount(saved.totals?.bestStreak),
+      bestScore: asCount(saved.totals?.bestScore),
+    };
+    progress.modes = normalizeProgressCollection(saved.modes);
+    progress.types = normalizeProgressCollection(saved.types);
+    progress.questions = normalizeProgressCollection(saved.questions);
+    progress.days = normalizeProgressCollection(saved.days);
+    progress.recent = Array.isArray(saved.recent)
+      ? saved.recent
+          .filter(isRecord)
+          .slice(-RECENT_ATTEMPT_LIMIT)
+          .map(normalizeRecentAttempt)
+      : [];
+
+    return progress;
+  }
+
+  function normalizeProgressCollection(collection) {
+    if (!isRecord(collection)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(collection)
+        .filter(([, stats]) => isRecord(stats))
+        .map(([key, stats]) => [key, normalizeProgressStats(stats)]),
+    );
+  }
+
+  function normalizeProgressStats(stats) {
+    const normalized = createProgressStats();
+
+    if (!isRecord(stats)) {
+      return normalized;
+    }
+
+    ["label", "type", "mode", "lastAnsweredAt", "lastCorrectAt"].forEach((key) => {
+      if (typeof stats[key] === "string") {
+        normalized[key] = stats[key];
+      }
+    });
+    normalized.attempts = asCount(stats.attempts);
+    normalized.correct = Math.min(asCount(stats.correct), normalized.attempts);
+    normalized.points = asCount(stats.points);
+    normalized.currentStreak = asCount(stats.currentStreak);
+    normalized.bestStreak = asCount(stats.bestStreak);
+    normalized.bestScore = asCount(stats.bestScore);
+
+    return normalized;
+  }
+
+  function normalizeRecentAttempt(attempt) {
+    return {
+      at: typeof attempt.at === "string" ? attempt.at : new Date().toISOString(),
+      mode: typeof attempt.mode === "string" ? attempt.mode : GAME_MODES.MAP,
+      modeLabel: typeof attempt.modeLabel === "string" ? attempt.modeLabel : "",
+      type: typeof attempt.type === "string" ? attempt.type : "Question",
+      questionId: typeof attempt.questionId === "string" ? attempt.questionId : "",
+      questionLabel:
+        typeof attempt.questionLabel === "string" ? attempt.questionLabel : "Question",
+      prompt: typeof attempt.prompt === "string" ? attempt.prompt : "",
+      answers: Array.isArray(attempt.answers)
+        ? attempt.answers.filter((answer) => typeof answer === "string").slice(0, 24)
+        : [],
+      guessLabel: typeof attempt.guessLabel === "string" ? attempt.guessLabel : "",
+      isCorrect: Boolean(attempt.isCorrect),
+      earned: asCount(attempt.earned),
+      score: asCount(attempt.score),
+      streak: asCount(attempt.streak),
+      distanceKm: Number.isFinite(attempt.distanceKm) ? attempt.distanceKm : null,
+    };
+  }
+
+  function createEmptyProgress() {
+    return {
+      version: 1,
+      totals: {
+        attempts: 0,
+        correct: 0,
+        points: 0,
+        bestStreak: 0,
+        bestScore: 0,
+      },
+      modes: {},
+      types: {},
+      questions: {},
+      days: {},
+      recent: [],
+    };
+  }
+
+  function createProgressStats(metadata = {}) {
+    return {
+      ...metadata,
+      attempts: 0,
+      correct: 0,
+      points: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+    };
+  }
+
+  function getProgressStats(collection, key, metadata = {}) {
+    if (!isRecord(collection[key])) {
+      collection[key] = createProgressStats(metadata);
+    }
+
+    Object.assign(collection[key], metadata);
+    collection[key].attempts = asCount(collection[key].attempts);
+    collection[key].correct = asCount(collection[key].correct);
+    collection[key].points = asCount(collection[key].points);
+    collection[key].currentStreak = asCount(collection[key].currentStreak);
+    collection[key].bestStreak = asCount(collection[key].bestStreak);
+
+    return collection[key];
+  }
+
+  function incrementProgressStats(stats, isCorrect, points) {
+    stats.attempts += 1;
+    stats.correct += isCorrect ? 1 : 0;
+    stats.points += points;
+  }
+
+  function getQuestionLabel(question) {
+    const answerNames = question.answers.map(getRegionName);
+
+    if (question.mode === GAME_MODES.OUTLINE || state.mode === GAME_MODES.OUTLINE) {
+      return answerNames[0] || "Country outline";
+    }
+
+    if (question.type === "Flag") {
+      return `Flag: ${answerNames[0] || question.clue}`;
+    }
+
+    return question.clue ? `${question.type}: ${question.clue}` : question.prompt;
+  }
+
+  function getRegionName(regionId) {
+    return regionById.get(regionId)?.name || regionId;
+  }
+
+  function formatModeName(mode) {
+    return mode === GAME_MODES.OUTLINE ? "Outlines" : "Map";
+  }
+
+  function formatAccuracy(stats) {
+    return `${Math.round(getAccuracy(stats) * 100)}%`;
+  }
+
+  function formatRecentAccuracy(attempts) {
+    const recent = attempts.slice(-RECENT_FORM_LIMIT);
+
+    if (!recent.length) {
+      return "0%";
+    }
+
+    const correct = recent.filter((attempt) => attempt.isCorrect).length;
+    return `${Math.round((correct / recent.length) * 100)}%`;
+  }
+
+  function getAccuracy(stats) {
+    const attempts = asCount(stats?.attempts);
+
+    if (!attempts) {
+      return 0;
+    }
+
+    return clamp(asCount(stats.correct) / attempts, 0, 1);
+  }
+
+  function compareLastAnswered(left, right) {
+    return Date.parse(left.lastAnsweredAt || "") - Date.parse(right.lastAnsweredAt || "");
+  }
+
+  function formatAnswerNames(answers) {
+    if (!answers.length) {
+      return "Unknown";
+    }
+
+    if (answers.length <= 3) {
+      return answers.join(", ");
+    }
+
+    return `${answers.slice(0, 3).join(", ")} +${answers.length - 3}`;
+  }
+
+  function formatInteger(value) {
+    return asCount(value).toLocaleString();
+  }
+
+  function formatRelativeTime(value) {
+    const timestamp = Date.parse(value);
+
+    if (!Number.isFinite(timestamp)) {
+      return "Unknown time";
+    }
+
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+
+    if (elapsedSeconds < 60) {
+      return "Just now";
+    }
+
+    if (elapsedSeconds < 3600) {
+      return `${Math.floor(elapsedSeconds / 60)}m ago`;
+    }
+
+    if (elapsedSeconds < 86400) {
+      return `${Math.floor(elapsedSeconds / 3600)}h ago`;
+    }
+
+    if (elapsedSeconds < 604800) {
+      return `${Math.floor(elapsedSeconds / 86400)}d ago`;
+    }
+
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  function formatShortDate(date) {
+    return date.toLocaleDateString(undefined, {
+      month: "numeric",
+      day: "numeric",
+    });
+  }
+
+  function formatLongDate(date) {
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+
+  function getLocalDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+  function addDays(date, days) {
+    const nextDate = new Date(date);
+    nextDate.setHours(12, 0, 0, 0);
+    nextDate.setDate(nextDate.getDate() + days);
+
+    return nextDate;
+  }
+
+  function asCount(value) {
+    const number = Number(value);
+
+    if (!Number.isFinite(number) || number <= 0) {
+      return 0;
+    }
+
+    return Math.floor(number);
+  }
+
+  function isRecord(value) {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
   }
 
   function drawLand() {
