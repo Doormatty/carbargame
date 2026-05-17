@@ -25,7 +25,7 @@
   const RECENT_HISTORY_LIMIT = 10;
   const TREND_DAYS = 14;
   const SUMMARY_LIST_LIMIT = 5;
-  const TWEMOJI_FLAG_BASE_URL = "https://cdn.jsdelivr.net/npm/twemoji@14.0.2/assets/svg/";
+  const FLAG_ASSET_BASE_PATH = "./assets/flags/";
   const COUNTRY_ANSWER_ALIASES = {
     "bosnia-and-herzegovina": ["bosnia", "bosnia herzegovina"],
     "cabo-verde": ["cape verde"],
@@ -2124,7 +2124,7 @@
 
   function getFlagImageUrl(clue) {
     const codepoints = getFlagCodepoints(clue);
-    return codepoints ? `${TWEMOJI_FLAG_BASE_URL}${codepoints}.svg` : "";
+    return codepoints ? `${FLAG_ASSET_BASE_PATH}${codepoints}.svg` : "";
   }
 
   function getFlagCodepoints(clue) {

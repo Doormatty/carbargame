@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 
 global.window = {};
@@ -33,6 +34,20 @@ function collectRegionIds(gameData) {
   }
 
   return ids;
+}
+
+function getFlagCodepoints(clue) {
+  const characters = Array.from(String(clue || "").trim());
+  const isFlag =
+    characters.length === 2 &&
+    characters.every((character) => {
+      const codepoint = character.codePointAt(0);
+      return codepoint >= 0x1f1e6 && codepoint <= 0x1f1ff;
+    });
+
+  return isFlag
+    ? characters.map((character) => character.codePointAt(0).toString(16)).join("-")
+    : "";
 }
 
 function validate() {
@@ -75,6 +90,20 @@ function validate() {
 
     if (typeof question.clue !== "string" || question.clue.trim() === "") {
       failures.push(`${label}: clue must be a non-empty string.`);
+    } else {
+      const flagCodepoints = getFlagCodepoints(question.clue);
+      if (flagCodepoints) {
+        const flagAssetPath = path.join(
+          __dirname,
+          "..",
+          "assets",
+          "flags",
+          `${flagCodepoints}.svg`,
+        );
+        if (!fs.existsSync(flagAssetPath)) {
+          failures.push(`${label}: missing flag asset assets/flags/${flagCodepoints}.svg.`);
+        }
+      }
     }
 
     if (!Array.isArray(question.answers) || question.answers.length === 0) {
