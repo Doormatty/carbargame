@@ -351,7 +351,7 @@
     }
 
     const flag = document.createElement("span");
-    flag.className = "flag-clue";
+    flag.className = "flag-clue is-fallback";
 
     const image = document.createElement("img");
     image.className = "flag-clue-image";
@@ -359,6 +359,13 @@
     image.decoding = "async";
     image.loading = "eager";
     image.referrerPolicy = "no-referrer";
+    image.addEventListener(
+      "load",
+      () => {
+        flag.classList.remove("is-fallback");
+      },
+      { once: true },
+    );
     image.addEventListener(
       "error",
       () => {

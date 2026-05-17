@@ -128,6 +128,12 @@ test("terrain hint overlays satellite terrain and halves current question points
 
 test("renders flag clues as image assets", async ({ page }) => {
   const failures = await openGame(page);
+  await page.route(/twemoji@14\.0\.2\/assets\/svg\/1f1e8-1f1e6\.svg$/, (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3 2"><path fill="#fff" d="M0 0h3v2H0z"/><path fill="#d52b1e" d="M0 0h1v2H0zm2 0h1v2H2z"/></svg>`,
+    }),
+  );
 
   await page.evaluate(() => {
     window.__GEOPIN_TEST__.setQuestions([
@@ -150,7 +156,53 @@ test("renders flag clues as image assets", async ({ page }) => {
   await expect(clue).toHaveClass(/has-flag-image/);
   await expect(image).toHaveAttribute("alt", "Canadian flag");
   await expect(image).toHaveAttribute("src", /1f1e8-1f1e6\.svg$/);
+  await expect(clue.locator(".flag-clue")).toHaveClass("flag-clue");
+  await expect(image).toBeVisible();
 
+  await expectNoRuntimeFailures(failures);
+});
+
+test("keeps a visible flag fallback while the image asset is pending", async ({ page }) => {
+  const failures = await openGame(page);
+  let releaseAsset;
+  const assetGate = new Promise((resolve) => {
+    releaseAsset = resolve;
+  });
+  let assetRequestHandled;
+
+  await page.route(/twemoji@14\.0\.2\/assets\/svg\/1f1e8-1f1e6\.svg$/, (route) => {
+    assetRequestHandled = assetGate.then(() => route.abort());
+    return assetRequestHandled;
+  });
+
+  const assetRequested = page.waitForRequest(
+    /twemoji@14\.0\.2\/assets\/svg\/1f1e8-1f1e6\.svg$/,
+  );
+
+  await page.evaluate(() => {
+    window.__GEOPIN_TEST__.setQuestions([
+      {
+        id: "test-flag-canada",
+        type: "Flag",
+        points: 100,
+        clue: "🇨🇦",
+        clueLabel: "Canadian flag",
+        prompt: "Click the country represented by this flag.",
+        answers: ["canada"],
+      },
+    ]);
+  });
+  await assetRequested;
+
+  const clue = page.locator("#question-clue");
+  const fallback = clue.locator(".flag-clue-fallback");
+
+  await expect(clue.locator(".flag-clue")).toHaveClass(/is-fallback/);
+  await expect(fallback).toBeVisible();
+  await expect(fallback).toHaveText("CA");
+
+  releaseAsset();
+  await assetRequestHandled;
   await expectNoRuntimeFailures(failures);
 });
 
