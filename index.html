@@ -101,6 +101,18 @@
                 <path d="M16.8 6.2a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"></path>
               </svg>
             </button>
+            <button
+              id="border-hint"
+              type="button"
+              aria-label="Political borders"
+              aria-pressed="false"
+              title="Political borders (50% score for this question)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 18.5V5.5l5-2.1 6 2.2 5-2.1v13l-5 2.1-6-2.2-5 2.1zm2-3 2-.8V6.3l-2 .8v8.4zm4-1 4 1.5V7.5L10 6v8.5zm6 1.2 2-.8V6.5l-2 .8v8.4z"></path>
+                <path d="M9 5.2v10.1M15 6.2v10.1"></path>
+              </svg>
+            </button>
           </div>
           <svg id="world-map" viewBox="0 0 1000 500" role="img" aria-label="Blank world map">
             <rect class="ocean" width="1000" height="500"></rect>
@@ -120,6 +132,7 @@
               ></image>
             </g>
             <g id="land-layer"></g>
+            <g id="border-layer" class="border-layer" hidden></g>
             <g id="answer-layer"></g>
             <g id="pin-layer"></g>
           </svg>

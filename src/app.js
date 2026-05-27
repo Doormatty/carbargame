@@ -19,6 +19,7 @@
   const OUTLINE_MIN_PROJECTED_AREA = 14;
   const STREAK_BONUS_POINTS = 10;
   const TERRAIN_HINT_SCORE_MULTIPLIER = 0.5;
+  const BORDER_HINT_SCORE_MULTIPLIER = 0.5;
   const PROGRESS_STORAGE_KEY = "geopin-progress-v1";
   const RECENT_ATTEMPT_LIMIT = 100;
   const RECENT_FORM_LIMIT = 20;
@@ -56,6 +57,7 @@
   const elements = {
     svg: document.querySelector("#world-map"),
     landLayer: document.querySelector("#land-layer"),
+    borderLayer: document.querySelector("#border-layer"),
     answerLayer: document.querySelector("#answer-layer"),
     pinLayer: document.querySelector("#pin-layer"),
     terrainLayer: document.querySelector("#terrain-layer"),
@@ -83,6 +85,7 @@
     zoomOut: document.querySelector("#zoom-out"),
     zoomReset: document.querySelector("#zoom-reset"),
     terrainHint: document.querySelector("#terrain-hint"),
+    borderHint: document.querySelector("#border-hint"),
     clearProgress: document.querySelector("#clear-progress"),
     lifetimeAccuracy: document.querySelector("#lifetime-accuracy"),
     lifetimeAnswered: document.querySelector("#lifetime-answered"),
@@ -110,6 +113,8 @@
     remainingAnswerIds: [],
     terrainHintVisible: false,
     terrainHintUsed: false,
+    borderHintVisible: false,
+    borderHintUsed: false,
     progress: loadProgress(),
     view: { x: 0, y: 0, width: MAP_WIDTH, height: MAP_HEIGHT },
     pointer: null,
@@ -206,6 +211,7 @@
 
   function init() {
     drawLand();
+    drawPoliticalBorders();
     bindEvents();
     updateModeControls();
     restartGame();
@@ -221,6 +227,7 @@
     elements.zoomOut.addEventListener("click", () => zoomAtCenter(1.72));
     elements.zoomReset.addEventListener("click", resetView);
     elements.terrainHint.addEventListener("click", toggleTerrainHint);
+    elements.borderHint.addEventListener("click", toggleBorderHint);
     elements.clearProgress.addEventListener("click", clearProgressHistory);
 
     elements.svg.addEventListener("pointerdown", handlePointerDown);
@@ -266,10 +273,31 @@
     renderQuestionPoints(getCurrentQuestion(), isMultiAnswerQuestion(getCurrentQuestion()));
   }
 
+  function toggleBorderHint() {
+    if (state.mode !== GAME_MODES.MAP || state.answered) {
+      return;
+    }
+
+    state.borderHintVisible = !state.borderHintVisible;
+
+    if (state.borderHintVisible) {
+      state.borderHintUsed = true;
+    }
+
+    updateBorderHintUI();
+    renderQuestionPoints(getCurrentQuestion(), isMultiAnswerQuestion(getCurrentQuestion()));
+  }
+
   function resetTerrainHint() {
     state.terrainHintVisible = false;
     state.terrainHintUsed = false;
     updateTerrainHintUI();
+  }
+
+  function resetBorderHint() {
+    state.borderHintVisible = false;
+    state.borderHintUsed = false;
+    updateBorderHintUI();
   }
 
   function updateTerrainHintUI() {
@@ -279,6 +307,15 @@
     elements.svg.classList.toggle("has-terrain-hint", isActive);
     elements.terrainHint.setAttribute("aria-pressed", String(isActive));
     elements.terrainHint.disabled = state.mode !== GAME_MODES.MAP || state.answered;
+  }
+
+  function updateBorderHintUI() {
+    const isActive = state.mode === GAME_MODES.MAP && state.borderHintVisible;
+
+    setHidden(elements.borderLayer, !isActive);
+    elements.svg.classList.toggle("has-border-hint", isActive);
+    elements.borderHint.setAttribute("aria-pressed", String(isActive));
+    elements.borderHint.disabled = state.mode !== GAME_MODES.MAP || state.answered;
   }
 
   function restartGame() {
@@ -303,6 +340,7 @@
     state.foundAnswerIds = [];
     state.remainingAnswerIds = question.answers.slice();
     resetTerrainHint();
+    resetBorderHint();
     elements.answerLayer.replaceChildren();
     elements.pinLayer.replaceChildren();
     elements.outlineLayer.replaceChildren();
@@ -451,27 +489,57 @@
   }
 
   function renderQuestionPoints(question, isMultiAnswer) {
-    const hasHintPenalty = state.mode === GAME_MODES.MAP && state.terrainHintUsed;
-    const points = hasHintPenalty
-      ? applyTerrainHintPenalty(question.points)
+    const hintLabels = getUsedHintLabels();
+    const points = hintLabels.length
+      ? applyHintPenalties(question.points)
       : question.points;
     const suffix = isMultiAnswer ? "pts each" : "pts";
 
-    elements.questionPoints.textContent = hasHintPenalty
-      ? `${points} ${suffix} with hint`
+    elements.questionPoints.textContent = hintLabels.length
+      ? `${points} ${suffix} with ${formatHintLabels(hintLabels)}`
       : `${points} ${suffix}`;
   }
 
   function getAnswerPoints(question) {
     const points = question.points + state.streak * STREAK_BONUS_POINTS;
 
-    return state.mode === GAME_MODES.MAP && state.terrainHintUsed
-      ? applyTerrainHintPenalty(points)
-      : points;
+    return getUsedHintLabels().length ? applyHintPenalties(points) : points;
   }
 
-  function applyTerrainHintPenalty(points) {
-    return Math.floor(points * TERRAIN_HINT_SCORE_MULTIPLIER);
+  function getUsedHintLabels() {
+    if (state.mode !== GAME_MODES.MAP) {
+      return [];
+    }
+
+    const labels = [];
+
+    if (state.terrainHintUsed) {
+      labels.push("hint");
+    }
+
+    if (state.borderHintUsed) {
+      labels.push("borders");
+    }
+
+    return labels;
+  }
+
+  function formatHintLabels(labels) {
+    return labels.join(" + ");
+  }
+
+  function applyHintPenalties(points) {
+    let multiplier = 1;
+
+    if (state.mode === GAME_MODES.MAP && state.terrainHintUsed) {
+      multiplier *= TERRAIN_HINT_SCORE_MULTIPLIER;
+    }
+
+    if (state.mode === GAME_MODES.MAP && state.borderHintUsed) {
+      multiplier *= BORDER_HINT_SCORE_MULTIPLIER;
+    }
+
+    return Math.floor(points * multiplier);
   }
 
   function markAnswerFound(regionId) {
@@ -660,6 +728,7 @@
   function finishAnswer() {
     state.answered = true;
     updateTerrainHintUI();
+    updateBorderHintUI();
     elements.nextButton.disabled = false;
     elements.nextButton.textContent =
       state.currentIndex >= state.questions.length - 1 ? "Play again" : "Next";
@@ -1301,6 +1370,23 @@
     });
 
     elements.landLayer.replaceChildren(fragment);
+  }
+
+  function drawPoliticalBorders() {
+    const fragment = document.createDocumentFragment();
+
+    geography.regions.forEach((region) => {
+      getRegionPathData(region).forEach((pathData) => {
+        fragment.append(
+          createSvgElement("path", {
+            class: "political-border",
+            d: pathData,
+          }),
+        );
+      });
+    });
+
+    elements.borderLayer.replaceChildren(fragment);
   }
 
   function showAnswerZones(regionIds, className) {

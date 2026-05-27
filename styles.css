@@ -290,6 +290,7 @@ h1 {
 
 #world-map[hidden],
 #terrain-layer[hidden],
+#border-layer[hidden],
 .map-toolbar[hidden],
 .outline-stage[hidden],
 .answer-form[hidden],
@@ -298,6 +299,7 @@ h1 {
 }
 
 .terrain-layer,
+.border-layer,
 .terrain-image {
   pointer-events: none;
 }
@@ -314,6 +316,25 @@ h1 {
 #world-map.has-terrain-hint .land-outline {
   stroke: rgba(255, 253, 250, 0.88);
   stroke-width: 1.35;
+}
+
+.political-border {
+  fill: none;
+  stroke: rgba(20, 38, 40, 0.72);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.85;
+  vector-effect: non-scaling-stroke;
+}
+
+#world-map.has-border-hint .land-outline {
+  stroke: rgba(20, 38, 40, 0.42);
+  stroke-width: 0.95;
+}
+
+#world-map.has-terrain-hint.has-border-hint .political-border {
+  stroke: rgba(255, 253, 250, 0.9);
+  stroke-width: 1.15;
 }
 
 .question-panel {
